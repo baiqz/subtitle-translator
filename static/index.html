@@ -36,6 +36,7 @@ header .grow{flex:1}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim2);flex:none}
 .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(69,209,155,.15)}
 .dot.bad{background:var(--err);box-shadow:0 0 0 3px rgba(255,107,107,.15)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(240,180,41,.15)}
 
 main{display:grid;grid-template-columns:352px minmax(0,1fr);height:calc(100% - 56px)}
 aside{
@@ -240,7 +241,12 @@ tbody tr:hover{background:#141b24}
       <h3>翻译</h3>
       <div class="seg" id="engineSeg">
         <button data-v="google" class="on">免费通道</button>
+        <button data-v="mymemory">备用通道</button>
         <button data-v="llm">AI 大模型</button>
+      </div>
+      <div id="mmNote" hidden style="font-size:12px;color:var(--dim2);line-height:1.65;margin-top:9px">
+        国内可直连，不用代理。按天有免费额度，长片建议换 AI 大模型。<br>
+        免费通道连不上时也会自动走这条。
       </div>
       <div id="llmBox" hidden>
         <div class="row"><label>接口地址</label></div>
@@ -474,10 +480,15 @@ tbody tr:hover{background:#141b24}
     saveSoon();
   });
 
+  function engineLabel(){
+    return state.engine === "llm" ? "AI 大模型"
+         : state.engine === "mymemory" ? "备用通道" : "免费通道";
+  }
+
   function syncEngine(){
-    var box = $("llmBox");
-    box.hidden = state.engine !== "llm";
-    $("badgeEngine").textContent = state.engine === "llm" ? "AI 大模型" : "免费通道";
+    $("llmBox").hidden = state.engine !== "llm";
+    $("mmNote").hidden = state.engine !== "mymemory";
+    $("badgeEngine").textContent = engineLabel();
     if (window.__st_ready) checkNet(false);      // 换通道就重测，别拿旧结论糊弄人
   }
 
@@ -534,12 +545,13 @@ tbody tr:hover{background:#141b24}
   /* ---------------- 加载设置 ---------------- */
   function applySettings(s){
     state.settings = s;
-    if (s.engine === "llm") {
-      state.engine = "llm";
+    if (s.engine && s.engine !== "google") {
+      state.engine = s.engine;
       Array.prototype.forEach.call($("engineSeg").children, function(x){
-        x.classList.toggle("on", x.dataset.v === "llm");
+        x.classList.toggle("on", x.dataset.v === s.engine);
       });
-      $("llmBox").hidden = false;
+      $("llmBox").hidden = s.engine !== "llm";
+      $("mmNote").hidden = s.engine !== "mymemory";
     }
     if (s.mode === "strict") {
       state.mode = "strict";
@@ -583,17 +595,26 @@ tbody tr:hover{background:#141b24}
       .then(function(d){
         if (d.ok) {
           dot.className = "dot ok";
-          txt.textContent = d.engine === "llm" ? "大模型就绪" : "通道正常";
+          txt.textContent = d.engine === "llm" ? "大模型就绪"
+                          : d.engine === "mymemory" ? "备用通道就绪" : "通道正常";
           $("netPill").title = "走 " + d.via + "，点一下重测";
+        } else if (d.fallback) {
+          // Google 不通但备用通道在 —— 不算坏消息，别让人白折腾代理
+          dot.className = "dot warn";
+          txt.textContent = "自动用备用通道";
+          $("netPill").title = d.fallback + "，点一下重测";
         } else {
           dot.className = "dot bad";
-          txt.textContent = d.engine === "llm" ? "大模型没通" : "通道不通";
+          txt.textContent = d.engine === "llm" ? "大模型没通"
+                          : d.engine === "mymemory" ? "备用通道不通" : "通道不通";
           $("netPill").title = d.error || "";
           if (manual) {
             var hint = d.engine === "llm"
               ? "\n检查接口地址（一般写到 /v1）、Key 和模型名。"
-              : "\n免费通道要能访问 Google。本机走代理的话，在「高级」里把代理地址填对；" +
-                "或者切到「AI 大模型」用国内接口，那个不用代理。";
+              : d.engine === "mymemory"
+              ? "\n备用通道要能访问 api.mymemory.translated.net，检查网络或代理设置。"
+              : "\n免费通道要能访问 Google。本机走代理的话，把代理地址填对；" +
+                "或者切到「备用通道」（国内直连）或「AI 大模型」。";
             showError("翻译通道连不上：" + (d.error || "") + hint);
           }
         }

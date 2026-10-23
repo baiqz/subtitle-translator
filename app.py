@@ -72,8 +72,16 @@ def test_conn():
             body.get("llm_key") or s.get("llm_key", ""),
             body.get("llm_model") or s.get("llm_model", ""),
         )
+    elif engine == "mymemory":
+        res = config.probe_mymemory()
     else:
         res = config.probe_proxy(body.get("proxy", s.get("proxy", "")))
+        if not res.get("ok"):
+            # Google 不通不代表不能用：翻译时会自动降级到备用通道。
+            # 这里先说清楚，别让人以为坏了跑去折腾代理。
+            alt = config.probe_mymemory()
+            if alt.get("ok"):
+                res["fallback"] = "Google 连不上，翻译时会自动改用备用通道（国内直连）"
     res["engine"] = engine
     res["ffmpeg"] = bool(s.get("ffmpeg_dir"))
     return jsonify(res)

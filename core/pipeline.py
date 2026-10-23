@@ -64,7 +64,10 @@ def _natural_cues(sentences: list[dict], zh_list: list[str],
                   zh_line: int, en_line: int) -> list[dict]:
     out: list[dict] = []
     for s, z in zip(sentences, zh_list):
-        pairs = textseg.split_pair(s["en"], z, zh_line, en_line * 2)
+        # 一条字幕能占两行，中文容量就得按两行算（zh_line 是每行字数）。
+        # 之前只给单行容量，中文被多切一刀，切点比例就跟英文错开了 —— 明明
+        # 「And I learned that the hard way,」却配上「我了解到，相信我，」。
+        pairs = textseg.split_pair(s["en"], z, zh_line * 2, en_line * 2)
         # 时间按中文分：观众读的是中文，按英文长度分会让中文多的那条来不及看
         weights = [max(1, textseg.count_chars(zz)) if zz.strip()
                    else max(1, len(e.strip())) for e, zz in pairs]
@@ -87,7 +90,7 @@ def _merge_short(cues: list[dict], zh_line: int, en_line: int,
             if too_short:
                 en_len = len(last["en"]) + len(c["en"]) + 1
                 zh_len = len(last["zh"]) + len(c["zh"])
-                if en_len <= en_line * 2 and zh_len <= zh_line * 1.45:
+                if en_len <= en_line * 2 and zh_len <= zh_line * 2.2:
                     last["end"] = c["end"]
                     last["en"] = textseg.join_fragments(last["en"], c["en"])
                     last["zh"] = last["zh"] + c["zh"]
@@ -255,6 +258,11 @@ def run(job: "jobs_mod.Job", src_path: str, filename: str, params: dict) -> dict
     job.log(f"完成，用时 {elapsed}s")
     preview = [{"start": c["start"], "end": c["end"], "en": c["en"], "zh": c["zh"]}
                for c in out_cues[:400]]
+    # Google 没连上时实际走的是备用通道，标签得说实话
+    real_engine = tr.engine
+    if real_engine == "google" and tr.stats.get("mymemory"):
+        real_engine = "mymemory"
+    label = {"llm": "AI 大模型", "mymemory": "备用通道"}.get(real_engine, "免费通道")
     return {
         "files": made,
         "cues": preview,
@@ -263,8 +271,8 @@ def run(job: "jobs_mod.Job", src_path: str, filename: str, params: dict) -> dict
         "sentence_count": len(sentences),
         "input": info_in,
         "elapsed": elapsed,
-        "engine": tr.engine,
-        "engine_label": "AI 大模型" if tr.engine == "llm" else "免费通道",
+        "engine": real_engine,
+        "engine_label": label,
         "mode": mode,
         "warnings": warnings,
         "source_lang": source,

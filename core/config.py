@@ -122,6 +122,22 @@ def probe_proxy(proxy: str = "", timeout: float = 6.0) -> dict:
     return {"ok": False, "via": "", "error": "代理和直连都不通，检查网络或换个代理地址"}
 
 
+def probe_mymemory(timeout: float = 12.0) -> dict:
+    """备用通道：国内直连，免 key。通不通不能靠猜。"""
+    url = ("https://api.mymemory.translated.net/get"
+           "?q=hello&langpair=en%7Czh-CN")
+    try:
+        op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with op.open(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
+                     timeout=timeout) as r:
+            body = r.read().decode("utf-8", "replace")
+        if r.status == 200 and "translatedText" in body and "MYMEMORY WARNING" not in body.upper():
+            return {"ok": True, "via": "直连（免代理）"}
+        return {"ok": False, "via": "", "error": "接口有响应但内容异常"}
+    except Exception as e:
+        return {"ok": False, "via": "", "error": f"连不上：{type(e).__name__}"}
+
+
 def probe_llm(base: str, key: str, model: str, timeout: float = 12.0) -> dict:
     """测大模型通道。报错要说人话 —— "401" 对普通用户等于没说。"""
     if not base:

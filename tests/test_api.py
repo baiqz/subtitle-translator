@@ -52,7 +52,8 @@ def check(cond, msg):
 
 
 print("1) 通道检测")
-r = requests.post(BASE + "/api/test", json={"proxy": "http://127.0.0.1:33210"}, timeout=30)
+# 测免代理的备用通道：不依赖本机有没有代理，跑得稳
+r = requests.post(BASE + "/api/test", json={"engine": "mymemory"}, timeout=30)
 d = r.json()
 check(d.get("ok") is True, f"翻译通道：{d}")
 

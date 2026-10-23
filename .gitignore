@@ -19,3 +19,9 @@ tests/_input*.srt
 .vscode/
 .DS_Store
 Thumbs.db
+
+# 调试日志
+_bat.log
+_srv.log
+_*.cjs
+_probe*.py

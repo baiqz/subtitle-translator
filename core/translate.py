@@ -22,6 +22,10 @@ from concurrent.futures import ThreadPoolExecutor
 GOOGLE_URL = ("https://translate.googleapis.com/translate_a/single"
               "?client=gtx&sl={sl}&tl={tl}&dt=t&q={q}")
 
+# 备用通道：国内可直连、免 key，按天有额度。质量接近 Google，但只能逐条问。
+MYMEMORY_URL = "https://api.mymemory.translated.net/get?q={q}&langpair={pair}"
+_MYMEMORY_BAD = ("MYMEMORY WARNING", "QUERY LENGTH LIMIT", "USED ALL AVAILABLE")
+
 # 口语缩写先展开：机翻对 gonna / wanna 的处理很不稳定
 _SPOKEN = {
     r"\bgonna\b": "going to", r"\bwanna\b": "want to", r"\bgotta\b": "have to",
@@ -155,7 +159,7 @@ class Translator:
         self.terms = parse_glossary(glossary)
         self.log = log or (lambda m: None)
         self._lock = __import__("threading").Lock()
-        self.stats = {"batches": 0, "fallbacks": 0, "term_lost": 0}
+        self.stats = {"batches": 0, "fallbacks": 0, "term_lost": 0, "mymemory": 0}
 
     # ---- HTTP
     def _openers(self):
@@ -167,13 +171,15 @@ class Translator:
         out.append(urllib.request.build_opener(urllib.request.ProxyHandler({})))
         return out
 
-    def _fetch(self, url: str, data: bytes | None = None, headers: dict | None = None) -> bytes:
+    def _fetch(self, url: str, data: bytes | None = None, headers: dict | None = None,
+               tries: int = 3, timeout: float | None = None) -> bytes:
+        timeout = timeout or self.timeout
         last: Exception | None = None
         for opener in self._openers():
-            for attempt in range(3):
+            for attempt in range(tries):
                 try:
                     req = urllib.request.Request(url, data=data, headers=headers or {})
-                    with opener.open(req, timeout=self.timeout) as r:
+                    with opener.open(req, timeout=timeout) as r:
                         return r.read()
                 except urllib.error.HTTPError as e:
                     last = e
@@ -204,6 +210,17 @@ class Translator:
         return None
 
     def _google(self, texts: list[str], sl: str, tl: str, workers: int = 6) -> list[str]:
+        # 先花几秒确认通道通不通。被墙时逐批重试要白等十几分钟，
+        # 不如干脆点，直接换免代理的备用通道。
+        try:
+            self._fetch(GOOGLE_URL.format(sl=sl, tl=tl, q="hi"),
+                        headers={"User-Agent": "Mozilla/5.0"}, tries=1, timeout=6)
+        except TranslateError:
+            with self._lock:
+                self.stats["fallbacks"] += 1
+            self.log("免费通道连不上，自动改用备用通道（免代理，有每日额度）")
+            return self._mymemory(texts, "en" if sl == "auto" else sl, tl)
+
         results: list[str | None] = [None] * len(texts)
         # 按总字符数切批，避免 URL 过长被截断
         batches: list[list[int]] = []
@@ -244,6 +261,45 @@ class Translator:
         with ThreadPoolExecutor(max_workers=max(1, min(workers, len(batches) or 1))) as ex:
             list(ex.map(work, batches))
         return [r if r is not None else "" for r in results]
+
+    # ---- MyMemory（国内直连，免 key，按天额度）
+    def _mymemory_one(self, text: str, sl: str, tl: str) -> str:
+        if not text.strip():
+            return ""
+        url = MYMEMORY_URL.format(
+            q=urllib.parse.quote(text),
+            pair=urllib.parse.quote(f"{sl}|{tl}"))
+        raw = self._fetch(url, headers={"User-Agent": "Mozilla/5.0"}, tries=2, timeout=15)
+        try:
+            data = json.loads(raw.decode("utf-8", "replace"))
+        except Exception:
+            return ""
+        if str(data.get("responseStatus", "")) != "200":
+            return ""
+        out = ((data.get("responseData") or {}).get("translatedText") or "").strip()
+        if any(bad in out.upper() for bad in _MYMEMORY_BAD):
+            return ""                     # 额度用完了，别把警告文字当译文
+        return out
+
+    def _mymemory(self, texts: list[str], sl: str, tl: str, workers: int = 3) -> list[str]:
+        if not texts:
+            return []
+        results: list[str] = [""] * len(texts)
+
+        def work(i: int) -> None:
+            for attempt in range(2):
+                try:
+                    results[i] = self._mymemory_one(texts[i], sl, tl)
+                    return
+                except TranslateError:
+                    time.sleep(0.8 * (attempt + 1))
+
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(texts)))) as ex:
+            list(ex.map(work, range(len(texts))))
+        with self._lock:
+            self.stats["mymemory"] = self.stats.get("mymemory", 0) + sum(
+                1 for r in results if r)
+        return results
 
     # ---- LLM
     _SYS = (
@@ -349,6 +405,8 @@ class Translator:
 
         if self.engine == "llm":
             raw = self._llm(prepared, sl, tl)
+        elif self.engine == "mymemory":
+            raw = self._mymemory(prepared, "en" if sl == "auto" else sl, tl)
         else:
             raw = self._google(prepared, sl, tl)
 
