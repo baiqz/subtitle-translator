@@ -1,0 +1,37 @@
+====================================================
+  字幕翻译工作台 · 环境准备
+====================================================
+  Python 3.12.9
+  目录   E:\workbuddyspace1\subtitle-translator
+
+[1/3] 检查 Python 依赖
+  缺：numpy, faster-whisper  → 开始安装（首次约 200MB，走清华源）
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Collecting numpy
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/12/33/fefe62073dc8acfd0f2b9ed7c003af2f50aa61555e113e6db02b8f79f145/numpy-2.5.4-cp312-cp312-win_amd64.whl (12.6 MB)
+     ---------------------------------------- 12.6/12.6 MB 12.9 MB/s  0:00:00
+Collecting faster-whisper
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/05/99/49ee85903dee060d9f08297b4a342e5e0bcfca2f027a07b4ee0a38ab13f9/faster_whisper-1.2.1-py3-none-any.whl (1.1 MB)
+     ---------------------------------------- 1.1/1.1 MB 13.8 MB/s  0:00:00
+Collecting ctranslate2<5,>=4.0 (from faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/db/f8/1aec2aaf0e8a09987085dd2e4a876619fee6026f20ed28a2c2efc6235bec/ctranslate2-4.8.3-cp312-cp312-win_amd64.whl (19.2 MB)
+     ---------------------------------------- 19.2/19.2 MB 12.8 MB/s  0:00:01
+Collecting huggingface-hub>=0.21 (from faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/eb/b0/0f7b430fd100b3a3b037fdbb314878200241082e607b3383c63d91a13a72/huggingface_hub-2.2.0-py3-none-any.whl (839 kB)
+     ---------------------------------------- 839.9/839.9 kB 9.3 MB/s  0:00:00
+Collecting tokenizers<1,>=0.13 (from faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/d1/6c/24f074c9a0efb98e61b20aafe6b2641922d5db24e447d5d6daffd9e17555/tokenizers-0.23.3-cp310-abi3-win_amd64.whl (2.9 MB)
+     ---------------------------------------- 2.9/2.9 MB 16.7 MB/s  0:00:00
+Collecting onnxruntime<2,>=1.14 (from faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/be/ed/b12cea136ccd7b03d924f46b8393faf7ceac21115c0c50e729faa248cf23/onnxruntime-1.31.0-cp312-cp312-win_amd64.whl (14.9 MB)
+     ---------------------------------------- 14.9/14.9 MB 12.3 MB/s  0:00:01
+Collecting av>=11 (from faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/32/5a/743a83666ded197df8b9957e2800bef9a39d52b23be2ca211bbd14b5fb22/av-19.0.2-cp312-abi3-win_amd64.whl (28.2 MB)
+     ---------------------------------------- 28.2/28.2 MB 9.0 MB/s  0:00:03
+Requirement already satisfied: tqdm in c:\users\administrator\appdata\local\programs\python\python312\lib\site-packages (from faster-whisper) (4.67.1)
+Collecting pyyaml<7,>=5.3 (from ctranslate2<5,>=4.0->faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl (154 kB)
+Collecting flatbuffers (from onnxruntime<2,>=1.14->faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl (26 kB)
+Collecting packaging (from onnxruntime<2,>=1.14->faster-whisper)
+  Downloading https://pypi.tuna.tsinghua.edu.cn/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl (129 kB)
