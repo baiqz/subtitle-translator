@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字幕翻译工作台</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:#151a21; --panel2:#1a212b; --line:#242c38;
+  --text:#e8ecf3; --dim:#8792a4; --dim2:#63708a;
+  --accent:#4d8dff; --accent-dim:#233a5e; --ok:#45d19b; --warn:#f0b429; --err:#ff6b6b;
+}
+*{box-sizing:border-box}
+/* 关键：.picked/.res/.empty 这些带 display:flex 的类优先级和 [hidden] 相同，
+   作者样式表会赢，hidden 就废了 —— 必须显式压住 */
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+header{
+  height:56px; display:flex; align-items:center; gap:14px; padding:0 20px;
+  border-bottom:1px solid var(--line); background:#11161d; position:sticky; top:0; z-index:20;
+}
+.logo{display:flex; align-items:center; gap:9px; font-weight:600; font-size:15px; letter-spacing:.2px}
+.logo i{
+  width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#4d8dff,#7c5cff);
+  display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:700;color:#fff;
+}
+header .grow{flex:1}
+.net{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);cursor:pointer;
+  padding:5px 11px;border-radius:20px;border:1px solid var(--line);background:var(--panel)}
+.net:hover{border-color:#33405a;color:var(--text)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim2);flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(69,209,155,.15)}
+.dot.bad{background:var(--err);box-shadow:0 0 0 3px rgba(255,107,107,.15)}
+
+main{display:grid;grid-template-columns:352px minmax(0,1fr);height:calc(100% - 56px)}
+aside{
+  border-right:1px solid var(--line); overflow-y:auto; padding:16px;
+  display:flex; flex-direction:column; gap:12px; background:#10151c;
+}
+aside::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:9px}
+aside::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:#252d3a;border-radius:5px}
+aside::-webkit-scrollbar-track,.scroll::-webkit-scrollbar-track{background:transparent}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px}
+.card h3{margin:0 0 11px;font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.6px;text-transform:uppercase}
+
+/* ---- 上传 ---- */
+.drop{
+  border:1.5px dashed #2c3546; border-radius:10px; padding:22px 14px; text-align:center;
+  cursor:pointer; transition:.15s; background:#12171f;
+}
+.drop:hover{border-color:#3d5a8a;background:#141b26}
+.drop.over{border-color:var(--accent);background:#162235}
+.drop .big{font-size:26px;line-height:1;margin-bottom:9px;opacity:.85}
+.drop .t1{font-size:13.5px;font-weight:500}
+.drop .t2{font-size:11.5px;color:var(--dim2);margin-top:5px;line-height:1.7}
+.picked{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:8px;
+  background:var(--panel2);border:1px solid #2b3547}
+.picked .ico{width:30px;height:30px;border-radius:7px;background:var(--accent-dim);color:#8ab4ff;
+  display:grid;place-items:center;font-size:10px;font-weight:700;flex:none}
+.picked .nm{flex:1;min-width:0}
+.picked .nm b{display:block;font-size:12.5px;font-weight:500;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.picked .nm span{font-size:11px;color:var(--dim2)}
+.picked button{background:none;border:none;color:var(--dim2);cursor:pointer;font-size:16px;padding:2px 5px}
+.picked button:hover{color:var(--err)}
+
+/* ---- 表单 ---- */
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.row:last-child{margin-bottom:0}
+.row label{font-size:12.5px;color:#b7c0d0;flex:none}
+.row label .h{display:inline-block;width:13px;height:13px;line-height:13px;text-align:center;
+  border-radius:50%;border:1px solid #3a4457;color:var(--dim2);font-size:9px;cursor:help;margin-left:3px}
+select,input[type=text],input[type=password],input[type=number],textarea{
+  background:#0d1219;color:var(--text);border:1px solid var(--line);border-radius:6px;
+  padding:6px 8px;font-size:12.5px;font-family:inherit;outline:none;width:100%;
+}
+select:focus,input:focus,textarea:focus{border-color:#3d6399}
+select{cursor:pointer;appearance:none;padding-right:22px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' stroke='%238792a4' fill='none' stroke-width='1.5'/></svg>");
+  background-repeat:no-repeat;background-position:right 8px center}
+/* 注意：input[type=number] 的属性选择器优先级是 (0,1,1)，比 .w76 这种类选择器
+   高一级，上面那条 width:100% 会把下面的固定宽度全吃掉 —— 必须 !important 压回来 */
+.w120{width:120px!important;flex:none}
+.w90{width:90px!important;flex:none}
+.w76{width:76px!important;flex:none}
+.pair{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2)}
+
+.seg{display:flex;background:#0d1219;border:1px solid var(--line);border-radius:7px;
+  padding:2px;gap:2px;margin-bottom:9px}
+.seg button{
+  flex:1;background:none;border:none;color:var(--dim);padding:6px 4px;border-radius:5px;
+  font-size:12.5px;cursor:pointer;font-family:inherit;transition:.12s;
+}
+.seg button.on{background:var(--accent-dim);color:#a9c6ff;font-weight:500}
+.seg button:hover:not(.on){color:var(--text)}
+
+.opt{display:flex;gap:8px;margin-bottom:9px}
+.pick{
+  flex:1;border:1px solid var(--line);background:#0d1219;border-radius:8px;padding:9px 10px;
+  cursor:pointer;transition:.12s;
+}
+.pick:hover{border-color:#33405a}
+.pick.on{border-color:var(--accent);background:#131f31}
+.pick b{display:block;font-size:12.5px;font-weight:500;margin-bottom:2px}
+.pick span{display:block;font-size:11px;color:var(--dim2);line-height:1.45}
+.pick.on b{color:#a9c6ff}
+
+.sw{position:relative;width:36px;height:20px;border-radius:11px;background:#242c38;
+  cursor:pointer;transition:.16s;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#8792a4;transition:.16s}
+.sw.on{background:#2b5ea8}
+.sw.on::after{left:18px;background:#cfe0ff}
+
+details{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+details summary{cursor:pointer;font-size:12px;color:var(--dim);list-style:none;user-select:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸ ";display:inline-block;transition:.15s}
+details[open] summary::before{transform:rotate(90deg)}
+details[open] summary{color:#b7c0d0;margin-bottom:9px}
+textarea{resize:vertical;min-height:62px;line-height:1.55;font-size:12px}
+
+.go{
+  width:100%;padding:11px;border:none;border-radius:9px;font-size:14px;font-weight:600;
+  color:#fff;background:linear-gradient(135deg,#4d8dff,#6a5cff);cursor:pointer;
+  font-family:inherit;transition:.15s;letter-spacing:.3px;
+}
+.go:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
+.go:disabled{opacity:.42;cursor:not-allowed;transform:none}
+.go.stop{background:#2a1b1b;color:#ff8f8f;border:1px solid #4a2929}
+.tip{font-size:11px;color:var(--dim2);text-align:center;line-height:1.6}
+
+/* ---- 主区 ---- */
+.main{overflow:hidden;display:flex;flex-direction:column}
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;color:var(--dim2);padding:40px;text-align:center;
+}
+.empty .ic{font-size:46px;opacity:.28}
+.empty h2{margin:0;font-size:16px;font-weight:500;color:var(--dim)}
+.empty p{margin:0;font-size:12.5px;line-height:2;max-width:440px}
+.empty code{background:var(--panel2);padding:2px 6px;border-radius:4px;font-size:11.5px;color:#94a3b8}
+
+.prog{padding:26px 30px;flex:1;overflow-y:auto}
+.prog h2{margin:0 0 4px;font-size:15px;font-weight:600}
+.prog .sub{font-size:12.5px;color:var(--dim2);margin-bottom:20px}
+.bar{height:7px;border-radius:4px;background:#1c232e;overflow:hidden;margin-bottom:10px}
+.bar i{display:block;height:100%;width:0;border-radius:4px;
+  background:linear-gradient(90deg,#4d8dff,#7c5cff);transition:width .35s ease}
+.pmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--dim)}
+.logs{margin-top:22px;background:#0b0f15;border:1px solid var(--line);border-radius:8px;
+  padding:11px 13px;max-height:230px;overflow-y:auto;font:11.5px/1.85 ui-monospace,Consolas,monospace;
+  color:#7f8b9e;white-space:pre-wrap}
+.logs .hi{color:#a9c6ff}
+.spin{display:inline-block;width:11px;height:11px;border:1.6px solid #2f3a4d;
+  border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;
+  vertical-align:-1px;margin-right:7px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.res{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rhead{padding:15px 20px;border-bottom:1px solid var(--line);background:#11161d}
+.rtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+.rtop h2{margin:0;font-size:15px;font-weight:600}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--accent-dim);
+  color:#a9c6ff;font-weight:500}
+.badge.g{background:#14372c;color:#6ee7b7}
+.stat{display:flex;gap:18px;font-size:12px;color:var(--dim);flex-wrap:wrap}
+.stat b{color:var(--text);font-weight:600}
+.dls{display:flex;gap:8px;flex-wrap:wrap}
+.dl{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:7px;
+  background:var(--panel2);border:1px solid #2b3547;color:#cfd8e6;text-decoration:none;
+  font-size:12.5px;font-weight:500;transition:.12s;
+}
+.dl:hover{border-color:#3d6399;color:#fff;background:#1e2836}
+.dl.primary{background:linear-gradient(135deg,#3b7df0,#5b6cf0);border-color:transparent;color:#fff}
+.dl.primary:hover{filter:brightness(1.12)}
+.warns{margin:0 0 4px;padding:9px 12px;border-radius:7px;background:#2a2113;
+  border:1px solid #4a3c1a;color:#e2c179;font-size:12px;line-height:1.7}
+.tbl{flex:1;overflow-y:auto}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{
+  position:sticky;top:0;z-index:2;background:#141a22;text-align:left;padding:9px 16px;
+  font-size:11px;font-weight:600;color:var(--dim2);letter-spacing:.5px;
+  border-bottom:1px solid var(--line);
+}
+tbody td{padding:9px 16px;border-bottom:1px solid #1a2129;vertical-align:top;font-size:12.5px}
+tbody tr:hover{background:#141b24}
+.c-no{width:44px;color:var(--dim2);font:11px ui-monospace,monospace}
+.c-t{width:132px;color:#7f8b9e;font:11.5px ui-monospace,Consolas,monospace;white-space:nowrap}
+.c-en{color:#93a0b4;line-height:1.65;word-break:break-word}
+.c-zh{color:#e8ecf3;line-height:1.65;word-break:break-word;width:44%}
+.err{padding:30px;flex:1;overflow-y:auto}
+.errbox{max-width:620px;padding:16px 18px;border-radius:9px;background:#2a1618;
+  border:1px solid #5a2b2f;color:#ffb3b3;font-size:13px;line-height:1.75}
+.errbox b{display:block;margin-bottom:6px;color:#ff8f8f}
+
+@media(max-width:980px){
+  main{grid-template-columns:1fr;height:auto}
+  aside{border-right:none;border-bottom:1px solid var(--line)}
+  .main{min-height:60vh}
+  .c-zh{width:auto}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><i>字</i>字幕翻译工作台</div>
+  <div class="grow"></div>
+  <div class="net" id="netPill" title="点一下测翻译通道">
+    <span class="dot" id="netDot"></span><span id="netText">检测中…</span>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <section class="card">
+      <h3>输入</h3>
+      <div class="drop" id="dropZone">
+        <div class="big">⇪</div>
+        <div class="t1">拖入字幕或音频</div>
+        <div class="t2">SRT / VTT / ASS / TXT<br>MP3 / WAV / M4A / MP4 …</div>
+      </div>
+      <div class="picked" id="picked" hidden>
+        <div class="ico" id="pickIco">SRT</div>
+        <div class="nm"><b id="pickName"></b><span id="pickSize"></span></div>
+        <button id="pickClear" title="移除">×</button>
+      </div>
+      <input type="file" id="fileInput" hidden
+             accept=".srt,.vtt,.ass,.ssa,.txt,.mp3,.wav,.m4a,.flac,.aac,.ogg,.opus,.wma,.mp4,.mkv,.mov,.webm,.avi,.ts">
+    </section>
+
+    <section class="card">
+      <h3>翻译</h3>
+      <div class="seg" id="engineSeg">
+        <button data-v="google" class="on">免费通道</button>
+        <button data-v="llm">AI 大模型</button>
+      </div>
+      <div id="llmBox" hidden>
+        <div class="row"><label>接口地址</label></div>
+        <input type="text" id="llmBase" placeholder="https://api.siliconflow.cn/v1" style="margin-bottom:8px">
+        <div class="row"><label>API Key</label></div>
+        <input type="password" id="llmKey" placeholder="sk-..." style="margin-bottom:8px">
+        <div class="row"><label>模型</label></div>
+        <input type="text" id="llmModel" placeholder="Qwen/Qwen2.5-32B-Instruct" style="margin-bottom:9px">
+        <div class="tip" style="text-align:left;margin-bottom:2px">大模型翻得更像人话，代价是要自己配一个 key</div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label>语言</label>
+        <div class="pair">
+          <select id="srcLang" class="w90">
+            <option value="en">英语</option>
+            <option value="auto">自动</option>
+            <option value="zh">中文</option>
+            <option value="ja">日语</option>
+            <option value="ko">韩语</option>
+          </select>
+          <span>→</span>
+          <select id="tgtLang" class="w120">
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁体中文</option>
+            <option value="en">英语</option>
+            <option value="ja">日语</option>
+            <option value="ko">韩语</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>分句方式</h3>
+      <div class="opt" id="modeOpt">
+        <div class="pick on" data-v="natural">
+          <b>自然分句</b>
+          <span>按句翻译再按中文断行，读着顺，条数会变</span>
+        </div>
+        <div class="pick" data-v="strict">
+          <b>严格对齐</b>
+          <span>条数时间不动，只把中文塞进去</span>
+        </div>
+      </div>
+      <div class="row">
+        <label>中文每行字数</label>
+        <input type="number" id="zhLine" class="w76" min="8" max="40" value="18">
+      </div>
+      <div class="row">
+        <label>英文每行字符</label>
+        <input type="number" id="enLine" class="w76" min="20" max="90" value="42">
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>输出</h3>
+      <div class="row">
+        <label>格式</label>
+        <select id="outFormat" class="w90">
+          <option value="srt">SRT</option>
+          <option value="vtt">VTT</option>
+          <option value="ass">ASS</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>双语对照</label>
+        <div class="sw on" id="swBilingual" data-v="1"></div>
+      </div>
+      <div class="row" id="rowZhFirst">
+        <label>中文在上</label>
+        <div class="sw" id="swZhFirst" data-v="0"></div>
+      </div>
+      <details>
+        <summary>术语表（人名 / 专有名词）</summary>
+        <textarea id="glossary" placeholder="OpenAI => OpenAI&#10;Sam Altman => 山姆·奥特曼&#10;Transformer => Transformer"></textarea>
+        <div class="tip" style="text-align:left;margin-top:6px">
+          一行一条，用 =&gt; 分隔。只写原文表示"别翻它"
+        </div>
+      </details>
+      <details>
+        <summary>高级</summary>
+        <div class="row"><label>代理地址</label></div>
+        <input type="text" id="proxy" placeholder="http://127.0.0.1:33210" style="margin-bottom:8px">
+        <div class="row"><label>识别模型</label></div>
+        <select id="asrModel">
+          <option value="base">base（快，够用）</option>
+          <option value="small" selected>small（推荐）</option>
+          <option value="medium">medium（更准，慢）</option>
+        </select>
+      </details>
+    </section>
+
+    <button class="go" id="btnStart" disabled>开始翻译</button>
+    <div class="tip" id="goTip">先选一个字幕或音频文件</div>
+  </aside>
+
+  <section class="main">
+    <div class="empty" id="emptyState">
+      <div class="ic">◲</div>
+      <h2>还没开始</h2>
+      <p>
+        字幕文件直接翻；音频会先在本地把英文识别成文字再翻。<br>
+        全程只在本机跑，文件不会传到任何地方。
+      </p>
+      <p style="font-size:12px">
+        碎成一地的手工字幕也能救 —— <code>So I've been / thinking about / this</code>
+        会被拼回整句再翻。
+      </p>
+    </div>
+
+    <div class="prog" id="progressBox" hidden>
+      <h2><span class="spin"></span><span id="progStage">准备中</span></h2>
+      <div class="sub" id="progMsg">正在读取文件…</div>
+      <div class="bar"><i id="progBar"></i></div>
+      <div class="pmeta"><span id="progPct">0%</span><span id="progHint"></span></div>
+      <div class="logs" id="logs"></div>
+    </div>
+
+    <div class="res" id="resultBox" hidden>
+      <div class="rhead">
+        <div class="rtop">
+          <h2>完成</h2>
+          <span class="badge" id="badgeMode">自然分句</span>
+          <span class="badge g" id="badgeEngine">免费通道</span>
+        </div>
+        <div class="stat" style="margin-bottom:12px">
+          <span>条目 <b id="statCount">0</b></span>
+          <span>原片 <b id="statSrc">0</b> 条</span>
+          <span>用时 <b id="statTime">0s</b></span>
+          <span id="statExtra"></span>
+        </div>
+        <div class="dls" id="dlList"></div>
+        <div id="warnBox" hidden style="margin-top:11px"></div>
+      </div>
+      <div class="tbl scroll" id="tblWrap">
+        <table>
+          <thead><tr><th class="c-no">#</th><th class="c-t">时间</th><th>原文</th><th>译文</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="err" id="errorBox" hidden>
+      <div class="errbox"><b>没跑通</b><span id="errMsg"></span></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var state = { file:null, jobId:null, es:null, timer:null, engine:"google",
+                mode:"natural", settings:{} };
+
+  function esc(s){
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+    });
+  }
+  function fmtSize(n){
+    if (n > 1048576) return (n/1048576).toFixed(1) + " MB";
+    if (n > 1024) return Math.round(n/1024) + " KB";
+    return n + " B";
+  }
+  function fmtTime(t){
+    t = Math.max(0, t || 0);
+    var h = Math.floor(t / 3600);
+    var m = Math.floor((t % 3600) / 60);
+    var s = (t % 60).toFixed(1);
+    if (s.length < 4) s = "0" + s;
+    var mm = (m < 10 ? "0" : "") + m;
+    return h > 0 ? (h + ":" + mm + ":" + s) : (mm + ":" + s);
+  }
+
+  /* ---------------- 文件 ---------------- */
+  var drop = $("dropZone"), input = $("fileInput");
+
+  function pick(f){
+    if (!f) return;
+    state.file = f;
+    var ext = (f.name.split(".").pop() || "").toUpperCase();
+    $("pickIco").textContent = ext.slice(0,4);
+    $("pickName").textContent = f.name;
+    $("pickSize").textContent = fmtSize(f.size);
+    $("picked").hidden = false;
+    drop.hidden = true;
+    $("btnStart").disabled = false;
+    $("goTip").textContent = "识别和翻译都在本机跑，关掉页面回来结果还在";
+  }
+
+  drop.addEventListener("click", function(){ input.click(); });
+  input.addEventListener("change", function(){ pick(input.files[0]); });
+  ["dragenter","dragover"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    pick(f);
+  });
+  $("pickClear").addEventListener("click", function(){
+    state.file = null; input.value = "";
+    $("picked").hidden = true; drop.hidden = false;
+    $("btnStart").disabled = true;
+    $("goTip").textContent = "先选一个字幕或音频文件";
+  });
+
+  /* ---------------- 设置 ---------------- */
+  function segInit(el, key){
+    el.addEventListener("click", function(e){
+      var b = e.target.closest("button");
+      if (!b) return;
+      Array.prototype.forEach.call(el.children, function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      state[key] = b.dataset.v;
+      if (key === "engine") syncEngine();
+      saveSoon();
+    });
+  }
+  segInit($("engineSeg"), "engine");
+
+  $("modeOpt").addEventListener("click", function(e){
+    var p = e.target.closest(".pick");
+    if (!p) return;
+    Array.prototype.forEach.call(this.children, function(x){ x.classList.remove("on"); });
+    p.classList.add("on");
+    state.mode = p.dataset.v;
+    saveSoon();
+  });
+
+  function syncEngine(){
+    var box = $("llmBox");
+    box.hidden = state.engine !== "llm";
+    $("badgeEngine").textContent = state.engine === "llm" ? "AI 大模型" : "免费通道";
+    if (window.__st_ready) checkNet(false);      // 换通道就重测，别拿旧结论糊弄人
+  }
+
+  function bindSwitch(id, cb){
+    var el = $(id);
+    el.addEventListener("click", function(){
+      el.classList.toggle("on");
+      el.dataset.v = el.classList.contains("on") ? "1" : "0";
+      if (cb) cb(el.dataset.v === "1");
+      saveSoon();
+    });
+  }
+  bindSwitch("swBilingual", function(on){ $("rowZhFirst").style.display = on ? "" : "none"; });
+  bindSwitch("swZhFirst");
+
+  var saveTimer = null;
+  function saveSoon(){
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(pushSettings, 600);
+  }
+  function payload(){
+    var out = {
+      engine: state.engine,
+      mode: state.mode,
+      source_lang: $("srcLang").value,
+      target_lang: $("tgtLang").value,
+      out_format: $("outFormat").value,
+      zh_line: parseInt($("zhLine").value, 10) || 18,
+      en_line: parseInt($("enLine").value, 10) || 42,
+      bilingual: $("swBilingual").dataset.v === "1",
+      zh_first: $("swZhFirst").dataset.v === "1",
+      glossary: $("glossary").value,
+      proxy: $("proxy").value.trim(),
+      asr_model: $("asrModel").value,
+      llm_base: $("llmBase").value.trim(),
+      llm_model: $("llmModel").value.trim()
+    };
+    var k = $("llmKey").value.trim();
+    if (k) { out.llm_key = k; state.settings.llm_key_set = true; }
+    return out;
+  }
+  function pushSettings(){
+    fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(payload())}).catch(function(){});
+  }
+
+  ["srcLang","tgtLang","outFormat","asrModel"].forEach(function(id){
+    $(id).addEventListener("change", saveSoon);
+  });
+  ["zhLine","enLine","glossary","proxy","llmBase","llmModel","llmKey"].forEach(function(id){
+    $(id).addEventListener("input", saveSoon);
+  });
+
+  /* ---------------- 加载设置 ---------------- */
+  function applySettings(s){
+    state.settings = s;
+    if (s.engine === "llm") {
+      state.engine = "llm";
+      Array.prototype.forEach.call($("engineSeg").children, function(x){
+        x.classList.toggle("on", x.dataset.v === "llm");
+      });
+      $("llmBox").hidden = false;
+    }
+    if (s.mode === "strict") {
+      state.mode = "strict";
+      Array.prototype.forEach.call($("modeOpt").children, function(x){
+        x.classList.toggle("on", x.dataset.v === "strict");
+      });
+    }
+    $("srcLang").value = s.source_lang || "en";
+    $("tgtLang").value = s.target_lang || "zh-CN";
+    $("outFormat").value = s.out_format || "srt";
+    $("zhLine").value = s.zh_line || 18;
+    $("enLine").value = s.en_line || 42;
+    $("asrModel").value = s.asr_model || "small";
+    $("glossary").value = s.glossary || "";
+    $("proxy").value = s.proxy || "";
+    $("llmBase").value = s.llm_base || "";
+    $("llmModel").value = s.llm_model || "";
+    $("swBilingual").dataset.v = s.bilingual === false ? "0" : "1";
+    $("swBilingual").classList.toggle("on", s.bilingual !== false);
+    $("swZhFirst").dataset.v = s.zh_first ? "1" : "0";
+    $("swZhFirst").classList.toggle("on", !!s.zh_first);
+    $("rowZhFirst").style.display = s.bilingual === false ? "none" : "";
+    if (s.llm_key_set) $("llmKey").placeholder = "已保存，留空则不修改";
+    syncEngine();
+  }
+
+  /* ---------------- 网络检测 ---------------- */
+  function checkNet(manual){
+    var dot = $("netDot"), txt = $("netText");
+    txt.textContent = "检测中…";
+    dot.className = "dot";
+    fetch("/api/test", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        proxy: $("proxy").value.trim(),
+        engine: state.engine,
+        llm_base: $("llmBase").value.trim(),
+        llm_key: $("llmKey").value.trim(),
+        llm_model: $("llmModel").value.trim()
+      })})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) {
+          dot.className = "dot ok";
+          txt.textContent = d.engine === "llm" ? "大模型就绪" : "通道正常";
+          $("netPill").title = "走 " + d.via + "，点一下重测";
+        } else {
+          dot.className = "dot bad";
+          txt.textContent = d.engine === "llm" ? "大模型没通" : "通道不通";
+          $("netPill").title = d.error || "";
+          if (manual) {
+            var hint = d.engine === "llm"
+              ? "\n检查接口地址（一般写到 /v1）、Key 和模型名。"
+              : "\n免费通道要能访问 Google。本机走代理的话，在「高级」里把代理地址填对；" +
+                "或者切到「AI 大模型」用国内接口，那个不用代理。";
+            showError("翻译通道连不上：" + (d.error || "") + hint);
+          }
+        }
+      })
+      .catch(function(){
+        dot.className = "dot bad"; txt.textContent = "服务未响应";
+      });
+  }
+  $("netPill").addEventListener("click", function(){ checkNet(true); });
+
+  /* ---------------- 主区切换 ---------------- */
+  function show(which){
+    $("emptyState").hidden = which !== "empty";
+    $("progressBox").hidden = which !== "progress";
+    $("resultBox").hidden = which !== "result";
+    $("errorBox").hidden = which !== "error";
+  }
+  function showError(msg){
+    $("errMsg").textContent = msg;
+    show("error");
+  }
+
+  /* ---------------- 开始 ---------------- */
+  $("btnStart").addEventListener("click", function(){
+    if (!state.file) return;
+    if ($("btnStart").classList.contains("stop")) return;   // 正在跑，交给下面那个监听
+    var fd = new FormData();
+    fd.append("file", state.file);
+    var p = payload();
+    Object.keys(p).forEach(function(k){
+      if (k === "bilingual" || k === "zh_first") fd.append(k, p[k] ? "1" : "0");
+      else fd.append(k, p[k]);
+    });
+
+    $("btnStart").disabled = true;
+    $("btnStart").textContent = "上传中…";
+    $("logs").textContent = "";
+    show("progress");
+    $("progStage").textContent = "上传文件";
+    $("progMsg").textContent = state.file.name;
+    $("progBar").style.width = "2%";
+    $("progPct").textContent = "0%";
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/jobs");
+    xhr.upload.onprogress = function(e){
+      if (!e.lengthComputable) return;
+      var pct = Math.min(14, Math.round(e.loaded / e.total * 14));
+      $("progBar").style.width = pct + "%";
+      $("progPct").textContent = pct + "%";
+      $("progMsg").textContent = "上传中 " + fmtSize(e.loaded) + " / " + fmtSize(e.total);
+    };
+    xhr.onload = function(){
+      var d = {};
+      try { d = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status !== 200 || d.error) {
+        resetButton();
+        showError("传不上去：" + (d.error || ("HTTP " + xhr.status)));
+        return;
+      }
+      state.jobId = d.id;
+      $("btnStart").textContent = "取消";
+      $("btnStart").disabled = false;
+      $("btnStart").classList.add("stop");
+      try { localStorage.setItem("st_last_job", d.id); } catch (e) {}
+      listen(d.id);
+    };
+    xhr.onerror = function(){
+      resetButton();
+      showError("网络断了，或者文件太大被拒了。");
+    };
+    xhr.send(fd);
+  });
+
+  function resetButton(){
+    $("btnStart").disabled = !state.file;
+    $("btnStart").textContent = "开始翻译";
+    $("btnStart").classList.remove("stop");
+    if (state.es) { state.es.close(); state.es = null; }
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  }
+
+  $("btnStart").addEventListener("click", function(){
+    if (!$("btnStart").classList.contains("stop")) return;
+    if (state.jobId) {
+      fetch("/api/jobs/" + state.jobId + "/cancel", {method:"POST"});
+    }
+  });
+
+  /* ---------------- 进度 ---------------- */
+  function renderProgress(s){
+    $("progStage").textContent = s.stage || "处理中";
+    $("progMsg").textContent = s.message || "";
+    var pct = Math.round((s.progress || 0) * 100);
+    $("progBar").style.width = Math.max(2, pct) + "%";
+    $("progPct").textContent = pct + "%";
+    if (s.logs && s.logs.length) {
+      $("logs").textContent = s.logs.join("\n");
+      $("logs").scrollTop = $("logs").scrollHeight;
+    }
+  }
+
+  function listen(id){
+    if (state.es) state.es.close();
+    var es = new EventSource("/api/jobs/" + id + "/events");
+    state.es = es;
+    es.onmessage = function(ev){
+      var s;
+      try { s = JSON.parse(ev.data); } catch(e){ return; }
+      renderProgress(s);
+      if (s.status === "done") { es.close(); state.es = null; renderResult(s.result); }
+      else if (s.status === "error") { es.close(); state.es = null; resetButton(); showError(s.error); }
+      else if (s.status === "cancelled") { es.close(); state.es = null; resetButton(); show("empty"); }
+    };
+    es.onerror = function(){
+      // 断线了不代表任务挂了，退回去轮询
+      if (state.es === es) { es.close(); state.es = null; }
+      if (state.timer) return;
+      state.timer = setInterval(function(){
+        fetch("/api/jobs/" + id).then(function(r){ return r.json(); }).then(function(s){
+          renderProgress(s);
+          if (s.status === "done") {
+            clearInterval(state.timer); state.timer = null;
+            renderResult(s.result);
+          } else if (s.status === "error") {
+            clearInterval(state.timer); state.timer = null;
+            resetButton(); showError(s.error);
+          } else if (s.status === "cancelled") {
+            clearInterval(state.timer); state.timer = null;
+            resetButton(); show("empty");
+          }
+        }).catch(function(){});
+      }, 1200);
+    };
+  }
+
+  /* ---------------- 结果 ---------------- */
+  function renderResult(r){
+    resetButton();
+    if (!r) { showError("任务完成了但没有结果"); return; }
+    $("badgeMode").textContent = r.mode === "strict" ? "严格对齐" : "自然分句";
+    $("badgeEngine").textContent = r.engine_label || "免费通道";
+    $("statCount").textContent = r.count;
+    $("statSrc").textContent = r.source_count;
+    $("statTime").textContent = r.elapsed + "s";
+    $("statExtra").textContent = r.sentence_count
+      ? "翻译单元 " + r.sentence_count + " 句" : "";
+
+    var dl = $("dlList");
+    dl.innerHTML = "";
+    (r.files || []).forEach(function(f, i){
+      var a = document.createElement("a");
+      a.className = "dl" + (i === 0 ? " primary" : "");
+      a.href = "/api/jobs/" + state.jobId + "/file/" + encodeURIComponent(f.name);
+      a.textContent = "↓ " + f.label + " " + String(f.name).split(".").pop().toUpperCase();
+      dl.appendChild(a);
+    });
+    if ((r.files || []).length > 1) {
+      var z = document.createElement("a");
+      z.className = "dl";
+      z.href = "/api/jobs/" + state.jobId + "/zip";
+      z.textContent = "↓ 打包全部";
+      dl.appendChild(z);
+    }
+
+    var wb = $("warnBox");
+    if (r.warnings && r.warnings.length) {
+      wb.innerHTML = '<div class="warns">' + r.warnings.map(esc).join("<br>") + "</div>";
+      wb.hidden = false;
+    } else {
+      wb.hidden = true;
+    }
+
+    var tb = $("tbody");
+    tb.innerHTML = "";
+    var frag = document.createDocumentFragment();
+    (r.cues || []).forEach(function(c, i){
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td"); td1.className = "c-no"; td1.textContent = i + 1;
+      var td2 = document.createElement("td"); td2.className = "c-t";
+      td2.textContent = fmtTime(c.start) + " → " + fmtTime(c.end);
+      var td3 = document.createElement("td"); td3.className = "c-en"; td3.textContent = c.en;
+      var td4 = document.createElement("td"); td4.className = "c-zh"; td4.textContent = c.zh;
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
+      frag.appendChild(tr);
+    });
+    tb.appendChild(frag);
+    $("tblWrap").scrollTop = 0;
+    show("result");
+  }
+
+  /* ---------------- 启动 ---------------- */
+  function resumeLast(){
+    var last = null;
+    try { last = localStorage.getItem("st_last_job"); } catch (e) {}
+    if (!last) return;
+    fetch("/api/jobs/" + last).then(function(r){ return r.json(); }).then(function(s){
+      if (!s || s.error || !s.status) return;
+      state.jobId = last;
+      if (s.status === "done" && s.result && s.result.count) {
+        renderResult(s.result);
+      } else if (s.status === "running" || s.status === "pending") {
+        show("progress");
+        renderProgress(s);
+        $("btnStart").textContent = "取消";
+        $("btnStart").disabled = false;
+        $("btnStart").classList.add("stop");
+        listen(last);
+      }
+    }).catch(function(){});
+  }
+
+  fetch("/api/settings").then(function(r){ return r.json(); }).then(function(s){
+    applySettings(s);
+    window.__st_ready = true;
+    checkNet(false);
+    resumeLast();
+  }).catch(function(){ window.__st_ready = true; checkNet(false); resumeLast(); });
+})();
+</script>
+</body>
+</html>

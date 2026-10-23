@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字幕翻译工作台 · 把英文字幕翻成读得顺的中文</title>
+<meta name="description" content="上传英文字幕或音频，自动重新断句再翻译，导出双语 SRT。全程本机运行，文件不上传。">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#151a21; --panel2:#1a212b; --line:#242c38;
+    --text:#e8ecf3; --dim:#8792a4; --dim2:#63708a;
+    --accent:#4d8dff; --accent-dim:#233a5e; --ok:#45d19b; --warn:#f0b429; --err:#ff6b6b;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text); line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- 顶部 ---------- */
+  header{padding:72px 0 48px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+  header:before{
+    content:"";position:absolute;top:-160px;left:50%;transform:translateX(-50%);
+    width:620px;height:320px;border-radius:50%;
+    background:radial-gradient(circle,rgba(77,141,255,.16),transparent 68%);
+    pointer-events:none;
+  }
+  .kicker{
+    display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;
+    margin-bottom:22px;
+  }
+  h1{font-size:38px;line-height:1.28;letter-spacing:-.02em;font-weight:700}
+  h1 em{font-style:normal;color:var(--accent)}
+  .lede{margin-top:18px;font-size:17px;color:var(--dim);max-width:620px}
+  .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:9px;
+    font-size:15px;font-weight:600;border:1px solid var(--line);color:var(--text);
+    background:var(--panel2);transition:.15s;
+  }
+  .btn:hover{text-decoration:none;border-color:var(--dim2);transform:translateY(-1px)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#3f7ce8}
+
+  /* ---------- 屏图 ---------- */
+  .shot{
+    margin:44px 0 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:var(--panel);box-shadow:0 24px 60px -30px rgba(0,0,0,.9);
+  }
+  .shot img{display:block;width:100%}
+  .cap{font-size:13px;color:var(--dim2);margin-top:12px;text-align:center}
+
+  /* ---------- 段落 ---------- */
+  section{padding:60px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:23px;letter-spacing:-.01em;margin-bottom:10px}
+  h2 .num{color:var(--accent);font-family:var(--mono);font-size:15px;margin-right:10px}
+  .sub{color:var(--dim);margin-bottom:26px;font-size:15px}
+
+  /* 对比块 */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .col h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;color:var(--dim2)}
+  .col.bad h3{color:var(--err)}
+  .col.good h3{color:var(--ok)}
+  .raw{font-family:var(--mono);font-size:13px;color:var(--dim);line-height:1.9;white-space:pre-wrap}
+  .raw .n{color:var(--dim2);user-select:none;margin-right:10px}
+  .verdict{margin-top:14px;font-size:14px;padding-top:12px;border-top:1px dashed var(--line)}
+  .bad .verdict{color:var(--err)}
+  .good .verdict{color:var(--ok)}
+
+  /* 步骤 */
+  .steps{counter-reset:s;display:grid;gap:14px}
+  .step{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .step .i{
+    flex:none;width:28px;height:28px;border-radius:8px;background:var(--accent-dim);
+    color:#9dc0ff;display:grid;place-items:center;font-size:14px;font-weight:700;font-family:var(--mono);
+  }
+  .step b{display:block;margin-bottom:3px}
+  .step p{color:var(--dim);font-size:14.5px}
+  code{
+    font-family:var(--mono);font-size:.9em;background:var(--panel2);
+    border:1px solid var(--line);border-radius:5px;padding:1.5px 6px;color:#b9cdf5;
+  }
+  pre{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;overflow-x:auto;margin:14px 0;
+  }
+  pre code{background:none;border:0;padding:0;color:var(--text);font-size:13.5px;line-height:1.85}
+
+  /* 特性 */
+  .feats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .feat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .feat b{display:block;margin-bottom:6px;font-size:15px}
+  .feat p{color:var(--dim);font-size:14px}
+  .feat .tag{font-family:var(--mono);font-size:11px;color:var(--ok);letter-spacing:.05em}
+
+  /* FAQ */
+  details{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px}
+  details[open]{background:var(--panel2)}
+  summary{
+    padding:16px 20px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+  }
+  summary::-webkit-details-marker{display:none}
+  summary:after{content:"+";color:var(--dim2);font-family:var(--mono);font-size:17px}
+  details[open] summary:after{content:"−"}
+  details .body{padding:0 20px 18px;color:var(--dim);font-size:14.5px}
+  details .body p+p{margin-top:10px}
+
+  footer{padding:40px 0 64px;color:var(--dim2);font-size:13.5px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:720px){
+    header{padding:48px 0 36px}
+    h1{font-size:28px}
+    .lede{font-size:15.5px}
+    .compare,.feats{grid-template-columns:1fr}
+    section{padding:44px 0}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="kicker">本机运行 · 免费可用</div>
+    <h1>把英文字幕，翻成<em>读得顺</em>的中文</h1>
+    <p class="lede">
+      上传字幕或音频，它会先把被切碎的句子重新拼成完整句，再整句翻译，
+      最后按中文的呼吸节奏断行。导出双语 SRT，全程不上传任何文件。
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/baiqz/subtitle-translator/archive/refs/heads/main.zip">下载 ZIP（推荐）</a>
+      <a class="btn" href="https://github.com/baiqz/subtitle-translator">看源码</a>
+    </div>
+
+    <div class="shot">
+      <img src="preview.png" alt="字幕翻译工作台界面：左侧参数设置，右侧双语字幕预览">
+    </div>
+    <p class="cap">左设置、右预览，翻完直接下三种格式</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">01</span>机翻别扭，八成不是引擎的错</h2>
+    <p class="sub">问题出在喂进去的东西 —— 一条字幕常常只是半句话。</p>
+
+    <div class="compare">
+      <div class="col bad">
+        <h3>逐条翻（大多数工具）</h3>
+        <div class="raw"><span class="n">1</span>So I've been thinking about
+<span class="n">2</span>this for a while now, and
+<span class="n">3</span>I think the answer is pretty
+<span class="n">4</span>simple.</div>
+        <p class="verdict">翻译器连读四个没说完的句子，代词指代和转折承接全丢了。</p>
+      </div>
+      <div class="col good">
+        <h3>先拼句，再整句翻</h3>
+        <div class="raw"><span class="n">1</span>所以我已经思考这个问题有一段时间了，
+   我认为答案很简单。</div>
+        <p class="verdict">四条合成一句翻，再按中文节奏切回两条 —— 意思接得上。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">02</span>三步用起来</h2>
+    <p class="sub">Windows 双击即用，不用配环境变量，不用命令行。</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="i">1</div>
+        <div>
+          <b>下载并解压</b>
+          <p>上面点「下载 ZIP」，或 <code>git clone https://github.com/baiqz/subtitle-translator.git</code></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="i">2</div>
+        <div>
+          <b>双击 <code>start.bat</code></b>
+          <p>第一次会自动装依赖、备好 ffmpeg（约 200MB，走清华源）。之后启动只要几秒。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="i">3</div>
+        <div>
+          <b>拖文件进去，点开始</b>
+          <p>浏览器会自动打开。翻完下载双语、纯中文、纯原文三种字幕。</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="sub" style="margin-top:26px;margin-bottom:8px">Mac / Linux 用户：</p>
+    <pre><code>python3 -m pip install -r requirements.txt
+python3 app.py</code></pre>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">03</span>它做对的四件小事</h2>
+    <p class="sub">字幕不好读，往往败在细节。</p>
+
+    <div class="feats">
+      <div class="feat">
+        <b>句群重建</b>
+        <p>靠句末标点、引号闭合、时间空档、长度四个条件判断「这句话说完了没」，不完整的就往下拼。</p>
+      </div>
+      <div class="feat">
+        <b>中文主导切点</b>
+        <p>英文按自己字符数切、中文按标点切，两边的断点就会错位。这里让中文先切，英文按比例跟。</p>
+      </div>
+      <div class="feat">
+        <b>留容差，少切一刀</b>
+        <p>21 个字硬按 18 切会成 15+6，不如一条折两行 —— 读起来反而更顺。</p>
+      </div>
+      <div class="feat">
+        <b>术语表保护</b>
+        <p>人名、产品名用占位符锁住，翻完再换回去，不会被机翻乱改。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">04</span>常见问题</h2>
+    <p class="sub"></p>
+
+    <details>
+      <summary>翻译通道连不上怎么办？</summary>
+      <div class="body">
+        <p>默认的免费通道走 Google 接口，国内直连不通，需要代理。右上角有个圆点，点一下就知道通不通。</p>
+        <p>不想折腾代理就切「AI 大模型」，填个硅基流动或 DeepSeek 的 Key —— 国内直连，而且翻得更像人话。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>第一次处理音频要等多久？</summary>
+      <div class="body">
+        <p>首次会下载语音识别模型（<code>small</code> 约 480MB），只下一次。之后再处理音频就快了：
+            13 秒的英文音频，识别加翻译一共 8 秒左右。</p>
+        <p>想更快可以换成 <code>tiny</code> 模型，代价是识别准确率下降。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>文件会上传到什么地方吗？</summary>
+      <div class="body">
+        <p>不会。音频识别在本机跑（faster-whisper），服务只监听 <code>127.0.0.1</code>，
+            别的机器连不进来。只有「待翻译的文字」会发给翻译接口。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>支持哪些格式？</summary>
+      <div class="body">
+        <p>字幕进：SRT / VTT / ASS / SSA / TXT。音频视频进：MP3 / WAV / M4A / MP4 / MKV 等（走 ffmpeg 解码都能吃）。</p>
+        <p>出口：SRT / VTT / ASS，各有双语、纯中文、纯原文三份。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>能和原视频的时间轴对上吗？</summary>
+      <div class="body">
+        <p>默认「自然分段」会为了保证中文读得完，稍微挪动切点时间。要严格卡画面，就选「严格对齐」——
+            条数和时间一条不动，只把中文塞进去，代价是中文可能切在词中间。</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>为什么不做成网页版？</summary>
+      <div class="body">
+        <p>因为语音识别要跑本机模型，视频解码要 ffmpeg —— 这些在浏览器里做不了，
+            硬要做也得上传文件到别人的服务器，那就不是「全程本机」了。</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;width:100%">
+    <span>字幕翻译工作台 · MIT License</span>
+    <span><a href="https://github.com/baiqz/subtitle-translator">GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

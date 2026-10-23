@@ -1,0 +1,4 @@
+# .bat 是 GBK 编码，Git 内部存 UTF-8、检出时转回 GBK，网页上也能正常显示中文
+*.bat text eol=crlf working-tree-encoding=GBK
+
+*.png binary

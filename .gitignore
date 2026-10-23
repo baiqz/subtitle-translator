@@ -1,0 +1,21 @@
+# 运行时产物
+__pycache__/
+*.py[cod]
+bin/
+models/
+output/
+workspace/
+
+# 本机配置（可能含 API Key）
+data/settings.json
+
+# 测试临时文件
+tests/_speech.mp3
+tests/_probe.wav
+tests/_input*.srt
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
